@@ -3,6 +3,7 @@
   "metadata": "",
   "output": "",
   "date_format": "%m-%d-%Y %H:%M:%S",
+  "output_date_format": "%m-%d-%Y %H:%M:%S",
   "confirm_before_processing": true,
   "missing_date_behavior": "missing"
 }

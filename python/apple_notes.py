@@ -110,7 +110,8 @@ def score_metadata_match(key, tokens, candidate_key, candidate_tokens, candidate
             and any(len(token) >= 12 for token in tokens)
         )
     ))
-    score = max(ratio, partial, token_cover, fuzzy_cover)
+    token_score = max(token_cover, fuzzy_cover) if token_match else 0
+    score = max(ratio, partial, token_score)
     return score, score >= 0.88 or token_match, candidate
 
 
@@ -132,26 +133,49 @@ def read_metadata(path):
                 except csv.Error:
                     dialect = csv.excel
 
-                reader = csv.DictReader(f, dialect=dialect)
+                def parse_row(line):
+                    try:
+                        return next(csv.reader(
+                            [line],
+                            dialect=dialect,
+                            strict=True,
+                        ))
+                    except csv.Error:
+                        return next(csv.reader(
+                            [line],
+                            dialect=dialect,
+                            quoting=csv.QUOTE_NONE,
+                        ))
 
-                if reader.fieldnames:
-                    reader.fieldnames = [
+                fieldnames = parse_row(f.readline())
+                if fieldnames:
+                    fieldnames = [
                         (name or "").strip().lstrip("\ufeff")
-                        for name in reader.fieldnames
+                        for name in fieldnames
                     ]
 
                 required = {"Title", "Created On", "Modified On"}
-                if not required.issubset(reader.fieldnames or []):
+                if not required.issubset(fieldnames or []):
                     raise ValueError(
                         f"Expected columns: {sorted(required)}; "
-                        f"found: {reader.fieldnames}"
+                        f"found: {fieldnames}"
                     )
 
-                for row in reader:
+                for line in f:
+                    values = parse_row(line)
+                    if not values:
+                        continue
+
+                    extra_fields = max(0, len(values) - len(fieldnames))
+                    if extra_fields:
+                        values = [
+                            ",".join(values[:extra_fields + 1]),
+                            *values[extra_fields + 1:],
+                        ]
+                    values = (values + [""] * len(fieldnames))[:len(fieldnames)]
                     row = {
-                        (key or "").strip(): (value or "").strip()
-                        for key, value in row.items()
-                        if key is not None
+                        name: (value or "").strip()
+                        for name, value in zip(fieldnames, values)
                     }
 
                     if row.get("Title"):
@@ -214,10 +238,13 @@ def process(
     date_format="%Y-%m-%d",
     output_format="md",
     missing_date_behavior="missing",
+    output_date_format=None,
 ):
     output_format = str(output_format).strip().casefold().lstrip(".")
     if output_format not in {"md", "txt"}:
         raise ValueError("OUTPUT_FORMAT must be 'md' or 'txt'.")
+    if output_date_format is None:
+        output_date_format = date_format
 
     source, metadata_csv, output = (
         Path(p).resolve() for p in (source, metadata_csv, output)
@@ -268,7 +295,9 @@ def process(
                     if field == "created"
                     else max(values, key=lambda x: x[0])
                 )
-                result.append(selected[1])
+                result.append(selected[0].strftime(output_date_format))
+            elif field == "modified" and result[0] != "missing date":
+                result.append(result[0])
             else:
                 result.append("missing date")
 

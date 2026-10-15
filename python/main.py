@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app_settings import load_settings
+from app_settings import is_valid_output_date_format, load_settings
 from apple_notes import process
 from verify import verify
 
@@ -64,12 +64,33 @@ def ask_output_format(configured):
         print("Enter 'md' for Markdown or 'txt' for plain text.")
 
 
+def ask_output_date_format(configured, date_format):
+    if configured:
+        return configured
+
+    print("No valid output date format is configured.")
+    while True:
+        output_date_format = input(
+            "Output date format (e.g. %Y-%m-%d %H:%M:%S; "
+            "press Enter to use the metadata format): "
+        ).strip()
+        if not output_date_format:
+            return date_format
+        if is_valid_output_date_format(output_date_format):
+            return output_date_format
+        print("Enter a valid date format using Python datetime format codes.")
+
+
 def main():
     settings = load_settings()
     source = ask_path("Source", settings["source"], "dir")
     metadata = ask_path("Metadata", settings["metadata"], "file")
     output = ask_path("Output", settings["output"], "output")
     output_format = ask_output_format(settings["output_format"])
+    output_date_format = ask_output_date_format(
+        settings["output_date_format"],
+        settings["date_format"],
+    )
 
     if output.resolve() == source.resolve():
         raise ValueError("Output cannot be the source folder.")
@@ -78,6 +99,7 @@ def main():
         print(f"\nSource:   {source}")
         print(f"Metadata: {metadata}")
         print(f"Output:   {output}")
+        print(f"Output date format: {output_date_format}")
 
         if input("\nStart processing? [y/N] ").strip().lower() != "y":
             print("Cancelled.")
@@ -90,6 +112,7 @@ def main():
         settings["date_format"],
         output_format,
         settings["missing_date_behavior"],
+        output_date_format,
     )
     file_count = verify(output, output_format)
     extension = f".{output_format}"
